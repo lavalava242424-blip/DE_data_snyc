@@ -56,7 +56,7 @@ jobs:
           DEEPSEEK_SESSION_JSON: ${{ secrets.DEEPSEEK_SESSION_JSON }}
           HEADLESS: false
           PYTHONUNBUFFERED: 1
-        run: xvfb-run python news_bot.py
+        run: xvfb-run python den.py
 
       - name: Save bot state cache
         if: always()
