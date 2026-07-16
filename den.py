@@ -157,65 +157,107 @@ def fetch_latest_from_feeds(exclude_links=None):
             print(f"Feed error: {e}")
     return []
 
-# ── আপডেটেড কার্ড টেমপ্লেট ──
+# ── আপডেটেড কার্ড টেমপ্লেট (Black & White) ──
 CARD_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="bn">
 <head>
 <meta charset="UTF-8">
-<title>DemocraticEcho</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<title>DemocraticEcho — B/W Card</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Bengali:wght@400;600;700&family=Noto+Sans+Bengali:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { width: 1080px; height: 1080px; background: #000; display: flex; align-items: center; justify-content: center; }
-.card { width: 1080px; height: 1080px; position: relative; overflow: hidden; }
-.card-image { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; }
-.overlay {
-  position: absolute; inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(0,0,0,0.92) 0%,
-    rgba(0,0,0,0.75) 25%,
-    rgba(0,0,0,0.35) 55%,
-    rgba(0,0,0,0) 80%
-  );
+body { width: 1080px; height: 1080px; background:#fff; display:flex; align-items:center; justify-content:center; }
+
+.card {
+  width: 1080px; height: 1080px;
+  background:#fff;
+  display:flex;
+  flex-direction:column;
+  position:relative;
 }
-.content { position: absolute; bottom: 0; left: 0; right: 0; padding: 70px 64px; color: #fff; }
+
+/* ---- image, fixed to a 16:9 box ---- */
+.image-wrap {
+  width:100%;
+  height:608px;         /* 1080 x 608 ≈ 16:9 */
+  position:relative;
+  overflow:hidden;
+  background:#000;      /* letterbox colour if an image doesn't fill the box */
+  flex-shrink:0;
+}
+.card-image {
+  width:100%; height:100%;
+  object-fit:cover;
+  object-position: center 25%;   /* nudge up/down per photo if a face gets cropped */
+  display:block;
+}
+/* ---- divider ---- */
+.rule { height:2px; background:#fff; flex-shrink:0; }
+
+/* ---- text block (inverted: black ground, white ink) ---- */
+.content {
+  flex:1;
+  background:#000;
+  padding:44px 64px 40px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+
 .category {
-  display: inline-block;
-  font-family: 'Playfair Display', serif;
-  font-style: normal;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #000;
-  background: #ffffff;
-  padding: 13px 32px;
-  border-radius: 4px;
-  margin-bottom: 32px;
+  align-self:flex-start;
+  font-family:'Noto Sans Bengali', sans-serif;
+  font-size:22px;
+  font-weight:700;
+  letter-spacing:1.5px;
+  color:#fff;
+  border:1.5px solid #fff;
+  padding:9px 22px;
+  margin-bottom:28px;
 }
+
 .headline {
-  font-family: 'Noto Serif Bengali', serif;
-  font-size: 54px;
-  font-weight: 700;
-  line-height: 1.4;
-  color: #ffffff;
-  margin-bottom: 24px;
+  font-family:'Noto Serif Bengali', serif;
+  font-size:58px;
+  font-weight:700;
+  line-height:1.35;
+  color:#fff;
+  flex:1;
 }
-.meta { display: flex; justify-content: flex-end; align-items: center; }
+
+.meta {
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  padding-top:22px;
+  border-top:1px solid #fff;
+  margin-top:24px;
+}
+.logo-badge {
+  position:absolute;
+  top:32px;
+  left:32px;
+  width:106px;
+  height:106px;
+  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5));
+}
+.logo-badge img { width:100%; height:100%; display:block; }
 .date {
-  font-family: 'Playfair Display', serif;
-  font-style: normal;
-  font-size: 16px;
-  font-weight: 600;
-  color: #ffffff;
-  letter-spacing: 0.5px;
+  font-family:'Noto Sans Bengali', sans-serif;
+  font-size:16px;
+  font-weight:600;
+  letter-spacing:0.5px;
+  color:#a8a8a8;
 }
 </style>
 </head>
 <body>
 <div class="card">
-  <img class="card-image" src="{{ image_data_uri }}" alt="news">
-  <div class="overlay"></div>
+  <div class="image-wrap">
+    <img class="card-image" src="{{ image_data_uri }}" alt="news">
+    <div class="logo-badge"><img src="{{ logo_data_uri }}" alt="logo"></div>
+  </div>
+  <div class="rule"></div>
   <div class="content">
     <div class="category">{{ category }}</div>
     <div class="headline">{{ title }}</div>
@@ -234,9 +276,11 @@ def image_to_base64(path):
     mime = "image/jpeg" if ext in [".jpg",".jpeg"] else "image/png"
     return f"data:{mime};base64,{data}"
 
-def generate_card_html(title, img_path, category, date_str, out="temp_card.html"):
+def generate_card_html(title, img_path, category, date_str, logo_path=None, out="temp_card.html"):
     tpl = jinja2.Template(CARD_TEMPLATE_HTML)
+    logo_uri = image_to_base64(logo_path) if logo_path and os.path.exists(logo_path) else ""
     html = tpl.render(title=title, image_data_uri=image_to_base64(img_path),
+                      logo_data_uri=logo_uri,
                       category=category, date=date_str)
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
@@ -252,9 +296,11 @@ def render_html_to_image(html_path, out_img):
         page.screenshot(path=out_img, clip={"x":0,"y":0,"width":1080,"height":1080})
         browser.close()
 
-def create_news_card(title, img_path, out_path, category="সর্বশেষ", date_str="২৩ মে ২০২৬"):
+LOGO_PATH = os.environ.get("LOGO_PATH", "logo.png")  # কার্ডের বাঁ-উপরের লোগো ব্যাজ
+
+def create_news_card(title, img_path, out_path, category="সর্বশেষ", date_str="২৩ মে ২০২৬", logo_path=None):
     html_path = "temp_card.html"
-    generate_card_html(title, img_path, category, date_str, html_path)
+    generate_card_html(title, img_path, category, date_str, logo_path or LOGO_PATH, html_path)
     render_html_to_image(html_path, out_path)
     return out_path
 
@@ -372,11 +418,23 @@ def deepseek_rewrite(browser, prompt):
                 )
                 if blocks:
                     last_block = blocks[-1]
-                    # Search ফিচারের সাইটেশন মার্কার (ভাসমান "１", "２"... নাম্বার)
-                    # টেক্সট তোলার আগেই সরিয়ে ফেলা, নাহলে এগুলো আলাদা লাইনে
-                    # স্ট্রে সংখ্যা হিসেবে ঢুকে যায়
+                    # সাইটেশন/citation widget-গুলো টেক্সট তোলার আগেই DOM থেকে
+                    # পুরোপুরি সরিয়ে ফেলা হচ্ছে — নাহলে এগুলোর ভেতরের hidden
+                    # spacer span (opacity:0 কিন্তু layout দখল করে) থাকার কারণে
+                    # Chromium-এর innerText নিজে থেকে অযাচিত লাইন-ব্রেক ঢুকিয়ে দেয়।
+                    #
+                    # সংখ্যাওয়ালা সাইটেশন badge গুলো `.ds-markdown-cite` ক্লাসে
+                    # থাকে, কিন্তু SVG-লোগো/লিংক-টাইপ সাইটেশনগুলো DeepSeek-এর
+                    # নিজস্ব hash class-এ থাকে (যেমন `_2ed5dee`), যেটা বিল্ডের
+                    # সাথে বদলে যেতে পারে — তাই class name-এর বদলে inline
+                    # style + ভেতরে svg থাকা এই structural প্যাটার্ন ধরা হচ্ছে।
                     last_block.evaluate(
-                        "(el) => el.querySelectorAll('.ds-markdown-cite').forEach(n => n.remove())"
+                        """(el) => {
+                            el.querySelectorAll('.ds-markdown-cite').forEach(n => n.remove());
+                            el.querySelectorAll('span[style*="cursor: pointer"]').forEach(n => {
+                                if (n.querySelector('svg')) n.remove();
+                            });
+                        }"""
                     )
                     txt = last_block.inner_text().strip()
                     txt = re.sub(r'\n{3,}', '\n\n', txt).strip()
