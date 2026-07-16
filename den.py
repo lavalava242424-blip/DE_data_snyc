@@ -372,6 +372,12 @@ def deepseek_rewrite(browser, prompt):
                 )
                 if blocks:
                     last_block = blocks[-1]
+                    # Search ফিচারের সাইটেশন মার্কার (ভাসমান "１", "２"... নাম্বার)
+                    # টেক্সট তোলার আগেই সরিয়ে ফেলা, নাহলে এগুলো আলাদা লাইনে
+                    # স্ট্রে সংখ্যা হিসেবে ঢুকে যায়
+                    last_block.evaluate(
+                        "(el) => el.querySelectorAll('.ds-markdown-cite').forEach(n => n.remove())"
+                    )
                     txt = last_block.inner_text().strip()
                     txt = re.sub(r'\n{3,}', '\n\n', txt).strip()
                     if txt:
