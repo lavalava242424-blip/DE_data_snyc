@@ -255,7 +255,7 @@ body { width: 1080px; height: 1080px; background:#fff; display:flex; align-items
 <div class="card">
   <div class="image-wrap">
     <img class="card-image" src="{{ image_data_uri }}" alt="news">
-    <div class="logo-badge"><img src="{{ logo_data_uri }}" alt="logo"></div>
+    {% if logo_data_uri %}<div class="logo-badge"><img src="{{ logo_data_uri }}" alt="logo"></div>{% endif %}
   </div>
   <div class="rule"></div>
   <div class="content">
@@ -296,7 +296,8 @@ def render_html_to_image(html_path, out_img):
         page.screenshot(path=out_img, clip={"x":0,"y":0,"width":1080,"height":1080})
         browser.close()
 
-LOGO_PATH = os.environ.get("LOGO_PATH", "logo.png")  # কার্ডের বাঁ-উপরের লোগো ব্যাজ
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOGO_PATH = os.environ.get("LOGO_PATH", os.path.join(SCRIPT_DIR, "logo.png"))  # কার্ডের বাঁ-উপরের লোগো ব্যাজ
 
 def create_news_card(title, img_path, out_path, category="সর্বশেষ", date_str="২৩ মে ২০২৬", logo_path=None):
     html_path = "temp_card.html"
