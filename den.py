@@ -184,14 +184,14 @@ body { width: 1080px; height: 1080px; background: #000; display: flex; align-ite
   display: inline-block;
   font-family: 'Playfair Display', serif;
   font-style: normal;
-  font-size: 20px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   color: #000;
   background: #ffffff;
-  padding: 8px 22px;
-  border-radius: 3px;
-  margin-bottom: 26px;
+  padding: 13px 32px;
+  border-radius: 4px;
+  margin-bottom: 32px;
 }
 .headline {
   font-family: 'Noto Serif Bengali', serif;
