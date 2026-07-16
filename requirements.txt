@@ -1,0 +1,7 @@
+feedparser
+requests
+beautifulsoup4
+jinja2
+playwright
+google-api-python-client
+google-auth
