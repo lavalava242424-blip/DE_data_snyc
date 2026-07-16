@@ -1,5 +1,8 @@
 """
-স্বয়ংক্রিয় নিউজ বট — RSS + DeepSeek Rewrite + 6h লুপ + দৈনিক টার্গেট
+স্বয়ংক্রিয় নিউজ বট — RSS + DeepSeek Rewrite + 6h লুপ + দৈনিক টার্গেট (প্রতি রানের সীমা)
+
+আপডেট: generate_article() এখন সামারি নেয় না — শুধু টাইটেল ও লিংক পাঠায়,
+DeepSeek-এর Search টগল অন থাকায় ও নিজেই লিংকে গিয়ে বিস্তারিত পড়ে নেয়।
 """
 import os, json, base64, pickle, random, time, requests, jinja2, feedparser, re
 from datetime import datetime, timedelta, timezone
@@ -126,11 +129,6 @@ def get_image_url(entry):
             if u: return u
     return None
 
-def get_summary(entry):
-    if "description" in entry:
-        return BeautifulSoup(entry.description, "html.parser").get_text()[:2000]
-    return ""
-
 def fetch_latest_from_feeds(exclude_links=None):
     exclude_links = exclude_links or set()
     now = datetime.now(timezone.utc)
@@ -152,7 +150,6 @@ def fetch_latest_from_feeds(exclude_links=None):
                 if is_duplicate(title, link): continue
                 return [{
                     "title": title, "link": link,
-                    "summary": get_summary(entry),
                     "image_url": img, "canonical_url": link,
                     "published": now.isoformat(),
                 }]
@@ -160,7 +157,7 @@ def fetch_latest_from_feeds(exclude_links=None):
             print(f"Feed error: {e}")
     return []
 
-# ── কার্ড টেমপ্লেট ──
+# ── আপডেটেড কার্ড টেমপ্লেট ──
 CARD_TEMPLATE_HTML = """<!DOCTYPE html>
 <html lang="bn">
 <head>
@@ -184,17 +181,34 @@ body { width: 1080px; height: 1080px; background: #000; display: flex; align-ite
 }
 .content { position: absolute; bottom: 0; left: 0; right: 0; padding: 70px 64px; color: #fff; }
 .category {
-  font-family: 'Playfair Display', serif; font-style: italic; font-size: 20px; font-weight: 600;
-  letter-spacing: 4px; text-transform: uppercase; color: #fff; margin-bottom: 20px; opacity: 0.9;
+  display: inline-block;
+  font-family: 'Playfair Display', serif;
+  font-style: normal;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #000;
+  background: #ffffff;
+  padding: 8px 22px;
+  border-radius: 3px;
+  margin-bottom: 26px;
 }
 .headline {
-  font-family: 'Noto Serif Bengali', serif; font-size: 54px; font-weight: 700; line-height: 1.4;
-  color: #F3E9D8; margin-bottom: 24px;
+  font-family: 'Noto Serif Bengali', serif;
+  font-size: 54px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #ffffff;
+  margin-bottom: 24px;
 }
 .meta { display: flex; justify-content: flex-end; align-items: center; }
 .date {
-  font-family: 'Playfair Display', serif; font-style: italic; font-size: 16px;
-  color: rgba(255,255,255,0.7); letter-spacing: 0.5px;
+  font-family: 'Playfair Display', serif;
+  font-style: normal;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.5px;
 }
 </style>
 </head>
@@ -244,7 +258,7 @@ def create_news_card(title, img_path, out_path, category="সর্বশেষ"
     render_html_to_image(html_path, out_path)
     return out_path
 
-# ── DeepSeek Rewrite (সংশোধিত, helper ফাংশন সহ) ──
+# ── DeepSeek Rewrite ──
 def load_deepseek_session():
     s = os.environ.get("DEEPSEEK_SESSION_JSON")
     if s:
@@ -254,19 +268,6 @@ def load_deepseek_session():
         with open("deepseek_session.json") as f:
             return json.load(f)
     return None
-
-def _deepseek_select_expert_mode(page) -> None:
-    try:
-        expert_radio = page.query_selector('div[data-model-type="expert"][role="radio"]')
-        if expert_radio:
-            checked = expert_radio.get_attribute("aria-checked")
-            if checked != "true":
-                expert_radio.click()
-                page.wait_for_timeout(random.uniform(500, 800))
-        else:
-            print("  ⚠️  DeepSeek Expert radio option খুঁজে পাওয়া যায়নি।")
-    except Exception as e:
-        print(f"  ⚠️  DeepSeek Expert mode selection error: {e}")
 
 def _deepseek_ensure_toggle_on(page, label_text: str) -> None:
     try:
@@ -315,7 +316,7 @@ def _deepseek_find_textarea(page, timeout=8000):
             continue
     return None
 
-def deepseek_rewrite(browser, prompt: str) -> str | None:
+def deepseek_rewrite(browser, prompt):
     session = load_deepseek_session()
     if not session:
         print("  ❌ DeepSeek session not available — cannot rewrite.")
@@ -327,13 +328,12 @@ def deepseek_rewrite(browser, prompt: str) -> str | None:
         page.goto("https://chat.deepseek.com/", wait_until="domcontentloaded", timeout=30000)
         page.wait_for_timeout(3000)
 
-        _deepseek_select_expert_mode(page)
+        _deepseek_ensure_toggle_on(page, "Search")
         _deepseek_ensure_toggle_on(page, "DeepThink")
 
         textarea = _deepseek_find_textarea(page)
         if not textarea:
             print("  ❌ DeepSeek textarea not found.")
-            page.screenshot(path=f"deepseek_debug_{int(time.time())}.png")
             return None
 
         textarea.click()
@@ -341,13 +341,10 @@ def deepseek_rewrite(browser, prompt: str) -> str | None:
         if not _deepseek_is_focused(page, textarea):
             textarea.click()
             page.wait_for_timeout(500)
-            if not _deepseek_is_focused(page, textarea):
-                print("  ⚠️  DeepSeek: ক্লিকের পরও ইনপুট বক্স focused হয়নি, তবু টাইপ করার চেষ্টা চলছে...")
 
         textarea.fill(prompt)
         page.wait_for_timeout(random.uniform(500, 800))
 
-        # সাবমিট
         sent = False
         try:
             btn = page.wait_for_selector(
@@ -361,14 +358,13 @@ def deepseek_rewrite(browser, prompt: str) -> str | None:
         if not sent:
             page.keyboard.press("Enter")
 
-        print("  ⏳ Waiting for DeepSeek response (Expert mode + DeepThink, ~90s)...")
+        print("  ⏳ Waiting for DeepSeek response (Search + DeepThink, ~90s)...")
         page.wait_for_timeout(90000)
 
-        # রেসপন্স বের করা
         response_text = ""
         last_text = ""
         stable_count = 0
-        for _ in range(30):  # 30 × 2s = 60s max wait
+        for _ in range(30):
             page.wait_for_timeout(2000)
             try:
                 blocks = page.query_selector_all(
@@ -410,13 +406,16 @@ def deepseek_rewrite(browser, prompt: str) -> str | None:
         ctx.close()
     return None
 
-def generate_article(headline, summary):
+def generate_article(headline, link):
+    """সামারি না নিয়ে শুধু টাইটেল + লিংক পাঠানো হয় — DeepSeek-এর Search টগল
+    অন থাকায় ও নিজেই লিংকে গিয়ে বিস্তারিত পড়ে নেয়।"""
     prompt = f"""{headline}
+{link}
 
-{summary}
-
-এ বিষয়ে একটি বিস্তারিত নিউজ আর্টিকেল লেখো।
-শুধুমাত্র সাধারণ টেক্সট দাও, HTML নয়। কমপক্ষে ৪-৫ প্যারাগ্রাফ।"""
+এ বিষয়ে একটি বিস্তারিত নিউজ আর্টিকেল লিখো
+প্রফেশনাল নিরপেক্ষ লেটেস্ট 
+শুধুমাত্র সাধারণ টেক্সট দাও, HTML নয়। কমপক্ষে ৩-৫ প্যারাগ্রাফ। কোনো সাবহেডিং প্রয়োজন নেই।
+ভাষা হবে সংবাদমাধ্যমের মানসম্পন্ন ও নিরপেক্ষ বাংলা।"""
     headless = os.environ.get("HEADLESS", "true").lower() != "false"
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome", headless=headless)
@@ -482,7 +481,7 @@ def download_image(url, fname):
     except: pass
     return None
 
-# ── MAIN ──
+# ── MAIN (প্রতি রানের সর্বোচ্চ পোস্ট সীমাসহ) ──
 def main():
     print("🚀 Bot started")
     state = load_state()
@@ -492,6 +491,9 @@ def main():
     if count >= target:
         print("🎯 Today's target already reached.")
         return
+
+    max_run_posts = max(1, -(-target // 4))   # ceil division
+    print(f"📌 This run will post up to {max_run_posts} articles (daily target: {target})")
 
     run_start = time.time()
     posts_done_this_run = 0
@@ -504,6 +506,9 @@ def main():
         tgt, cnt = get_daily_target(state)
         if cnt >= tgt:
             print("🎯 Daily target reached")
+            break
+        if posts_done_this_run >= max_run_posts:
+            print(f"🏁 Run limit reached ({max_run_posts} posts this run)")
             break
 
         articles = fetch_latest_from_feeds(exclude_links=failed_this_run)
@@ -527,7 +532,7 @@ def main():
                                      "সর্বশেষ", bengali_date_today())
         print("🖼️ Card created")
 
-        article_text = generate_article(art["title"], art.get("summary",""))
+        article_text = generate_article(art["title"], art["link"])
         paras = [p.strip() for p in article_text.split("\n") if p.strip()]
         html = "".join(f"<p>{p}</p>" if not (p.startswith("<p>") and p.endswith("</p>")) else p for p in paras)
         if art.get("image_url"):
@@ -562,12 +567,16 @@ def main():
 
         done = increment_daily_count(state)
         posts_done_this_run += 1
+
         if done:
             print("🎯 Daily target completed.")
             break
+        if posts_done_this_run >= max_run_posts:
+            print(f"🏁 Run limit reached ({max_run_posts} posts this run)")
+            break
 
-        posts_left = tgt - state["daily_count"]
-        delay = adaptive_delay(run_start, posts_left)
+        posts_left_this_run = max_run_posts - posts_done_this_run
+        delay = adaptive_delay(run_start, posts_left_this_run)
         print(f"⏳ Next in {delay//60}m {delay%60}s")
         time.sleep(delay)
 
