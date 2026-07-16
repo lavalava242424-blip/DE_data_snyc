@@ -5,6 +5,7 @@
 DeepSeek-এর Search টগল অন থাকায় ও নিজেই লিংকে গিয়ে বিস্তারিত পড়ে নেয়।
 """
 import os, json, base64, pickle, random, time, requests, jinja2, feedparser, re
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
@@ -515,15 +516,27 @@ def post_to_blogger(title, html):
 
 def post_image_and_comment(img_path, caption, comment):
     url = f"{GRAPH}/{FB_PAGE_ID}/photos"
-    params = {"access_token":FB_PAGE_ACCESS_TOKEN,"published":"true","message":caption}
-    with open(img_path,"rb") as f:
-        r = requests.post(url, params=params, files={"source":f})
-    data = r.json()
-    if "error" in data:
-        raise Exception(f"Facebook API error: {data['error']}")
-    post_id = data.get("post_id") or data["id"]
+    data = {
+        "access_token": FB_PAGE_ACCESS_TOKEN,
+        "published": "true",
+        "message": caption,
+    }
+    with open(img_path, "rb") as f:
+        r = requests.post(url, data=data, files={"source": f}, timeout=60)
+    resp = r.json()
+    if "error" in resp:
+        raise Exception(f"Facebook API error: {resp['error']}")
+    post_id = resp.get("post_id") or resp["id"]
+
     curl = f"{GRAPH}/{post_id}/comments"
-    requests.post(curl, params={"access_token":FB_PAGE_ACCESS_TOKEN}, data={"message":comment})
+    cdata = {"access_token": FB_PAGE_ACCESS_TOKEN, "message": comment}
+    try:
+        cr = requests.post(curl, data=cdata, timeout=30)
+        cresp = cr.json()
+        if "error" in cresp:
+            print(f"  ⚠️  Facebook comment error: {cresp['error']}")
+    except Exception as e:
+        print(f"  ⚠️  Facebook comment exception: {e}")
     return post_id
 
 # ── Helper ──
@@ -536,14 +549,24 @@ def bengali_date_today():
     year = "".join(bd[int(d)] for d in str(now.year))
     return f"{day} {months[now.month]} {year}"
 
-def download_image(url, fname):
+def download_image(url, fname, referer=None):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                      "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    if referer:
+        headers["Referer"] = referer
     try:
-        r = requests.get(url, headers={"User-Agent":"Mozilla/5.0"}, stream=True, timeout=15)
+        r = requests.get(url, headers=headers, stream=True, timeout=15)
         if r.status_code == 200:
-            with open(fname,"wb") as f:
-                for chunk in r: f.write(chunk)
+            with open(fname, "wb") as f:
+                for chunk in r.iter_content(8192):
+                    f.write(chunk)
             return fname
-    except: pass
+        print(f"  ⚠️  Image HTTP {r.status_code}: {url}")
+    except Exception as e:
+        print(f"  ⚠️  Image download exception ({type(e).__name__}): {e} — {url}")
     return None
 
 # ── MAIN (প্রতি রানের সর্বোচ্চ পোস্ট সীমাসহ) ──
@@ -586,7 +609,7 @@ def main():
             time.sleep(30)
             continue
 
-        img_file = download_image(art["image_url"], "temp_news.jpg")
+        img_file = download_image(art["image_url"], "temp_news.jpg", referer=art["link"])
         if not img_file:
             failed_this_run.add(art["link"])
             print("⚠️ Image download failed, added to failed_this_run")
