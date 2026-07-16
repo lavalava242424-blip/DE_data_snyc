@@ -1,0 +1,66 @@
+name: Run News Bot
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [run-bot]
+
+concurrency:
+  group: run-bot-group
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chrome
+          sudo apt-get install -y xvfb
+
+      - name: Restore token.pickle
+        run: echo "${{ secrets.TOKEN_PICKLE_BASE64 }}" | base64 -d > token.pickle
+
+      - name: Restore bot state cache
+        id: cache-restore
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: bot-state-${{ github.run_id }}
+          restore-keys: |
+            bot-state-
+
+      - name: Run bot
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+          BLOGGER_BLOG_ID: ${{ secrets.BLOGGER_BLOG_ID }}
+          DEEPSEEK_SESSION_JSON: ${{ secrets.DEEPSEEK_SESSION_JSON }}
+          HEADLESS: false
+          PYTHONUNBUFFERED: 1
+        run: xvfb-run python news_bot.py
+
+      - name: Save bot state cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state.json
+          key: bot-state-${{ github.run_id }}
